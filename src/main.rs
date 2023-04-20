@@ -88,8 +88,8 @@ impl Lab
             }
         };
 
-        let h0 = positify(checked_atan(self.b, a0_strike)) % 360.0;
-        let h1 = positify(checked_atan(other.b, a1_strike)) % 360.0;
+        let h0 = positify(checked_atan(self.b, a0_strike));
+        let h1 = positify(checked_atan(other.b, a1_strike));
 
         let l_mean_shifted = (l_mean - 50.0).powi(2);
 
