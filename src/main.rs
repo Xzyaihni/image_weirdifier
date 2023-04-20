@@ -4,7 +4,7 @@ use std::{
     ops::{Add, AddAssign, Sub, Div, Mul}
 };
 
-use argparse::{ArgumentParser, Store, StoreOption};
+use argparse::{ArgumentParser, Store, StoreOption, StoreTrue};
 
 use image::{RgbImage, Rgb, imageops::FilterType};
 
@@ -401,17 +401,30 @@ impl<T: Mul<Output=T> + Copy> Mul<T> for Color<T>
 fn take_closest_color(
     pallete_raw: &mut Vec<Color<u8>>,
     pallete: &mut Vec<Lab>,
-    pixel: Color<u8>
+    pixel: Color<u8>,
+    fast_dist: bool
 ) -> Color<u8>
 {
     let mut lowest_index = 0;
 
     let pixel: Lab = pixel.into();
-    let mut lowest_distance = pallete[lowest_index].distance(pixel);
+
+    let calc_distance = |color: Lab, other: Lab| -> f32
+    {
+        if fast_dist
+        {
+            color.distance_76(other)
+        } else
+        {
+            color.distance(other)
+        }
+    };
+
+    let mut lowest_distance = calc_distance(pallete[lowest_index], pixel);
 
     for (index, color) in pallete.iter().enumerate().skip(1)
     {
-        let distance = color.distance(pixel);
+        let distance = calc_distance(*color, pixel);
 
         if distance < lowest_distance
         {
@@ -429,7 +442,12 @@ fn take_closest_color(
     pallete_raw.remove(lowest_index)
 }
 
-fn palletify(image: &mut RgbImage, mut pallete_raw: Vec<Color<u8>>, mut pallete: Vec<Lab>)
+fn palletify(
+    image: &mut RgbImage,
+    mut pallete_raw: Vec<Color<u8>>,
+    mut pallete: Vec<Lab>,
+    fast_dist: bool
+)
 {
     let total_size = image.width() * image.height();
 
@@ -466,7 +484,7 @@ fn palletify(image: &mut RgbImage, mut pallete_raw: Vec<Color<u8>>, mut pallete:
             Color::<i32>::from(pixel) + errors[pixel_index]
         }.into();
 
-        let closest_color = take_closest_color(&mut pallete_raw, &mut pallete, color);
+        let closest_color = take_closest_color(&mut pallete_raw, &mut pallete, color, fast_dist);
 
         let neighbors_div = 12;
         let error: Color<f32> = (color - closest_color).into();
@@ -501,6 +519,8 @@ fn palletify(image: &mut RgbImage, mut pallete_raw: Vec<Color<u8>>, mut pallete:
 
 fn main()
 {
+    let mut fast_dist = false;
+
     let mut max_size: Option<u32> = None;
     let mut pallete_path: Option<String> = None;
 
@@ -508,6 +528,11 @@ fn main()
 
     {
         let mut parser = ArgumentParser::new();
+
+        parser.refer(&mut fast_dist)
+            .add_option(&["-f", "--fast-dist"], StoreTrue,
+                "use faster but less accurate distance function"
+            );
 
         parser.refer(&mut max_size)
             .add_option(&["-s", "--size"], StoreOption, "max pallete image size");
@@ -592,7 +617,7 @@ fn main()
         }).unzip()
     };
 
-    palletify(&mut image, pallete_raw, pallete);
+    palletify(&mut image, pallete_raw, pallete, fast_dist);
 
     image.save("output.png").unwrap_or_else(|err|
     {
