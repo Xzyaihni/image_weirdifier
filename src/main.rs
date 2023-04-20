@@ -4,7 +4,7 @@ use std::{
     ops::{Add, AddAssign, Sub, Div, Mul}
 };
 
-use argparse::{ArgumentParser, Store};
+use argparse::{ArgumentParser, Store, StoreOption};
 
 use image::{RgbImage, Rgb, imageops::FilterType};
 
@@ -501,10 +501,19 @@ fn palletify(image: &mut RgbImage, mut pallete_raw: Vec<Color<u8>>, mut pallete:
 
 fn main()
 {
+    let mut max_size: Option<u32> = None;
+    let mut pallete_path: Option<String> = None;
+
     let mut input_path = String::new();
 
     {
         let mut parser = ArgumentParser::new();
+
+        parser.refer(&mut max_size)
+            .add_option(&["-s", "--size"], StoreOption, "max pallete image size");
+
+        parser.refer(&mut pallete_path)
+            .add_option(&["-p", "--pallete"], StoreOption, "pallete image path");
 
         parser.refer(&mut input_path)
             .add_option(&["-i", "--input"], Store, "input image path")
@@ -519,33 +528,70 @@ fn main()
         cry_about_it(&format!("image error {err:?}"))
     });
 
-    let (new_width, new_height) = if image.width() < image.height()
+    let pallete_image = pallete_path.map(|pallete_path|
     {
-        (128, 256)
+        let mut image = image::open(pallete_path).unwrap_or_else(|err|
+        {
+            cry_about_it(&format!("pallete image error {err:?}"))
+        });
+
+        if let Some(max_size) = max_size
+        {
+            image = image.resize_exact(max_size, max_size, FilterType::Lanczos3);
+        }
+
+        image
+    });
+
+    let (new_width, new_height) = if let Some(ref pallete_image) = pallete_image
+    {
+        let (width, height) = (pallete_image.width(), pallete_image.height());
+
+        let (lower, higher) = (width.min(height), width.max(height));
+
+        if image.width() < image.height()
+        {
+            (lower, higher)
+        } else
+        {
+            (higher, lower)
+        }
     } else
     {
-        (256, 128)
+        if image.width() < image.height()
+        {
+            (128, 256)
+        } else
+        {
+            (256, 128)
+        }
     };
 
     let mut image = image.resize_exact(new_width, new_height, FilterType::Lanczos3).into_rgb8();
 
-    const MAX_COLOR: usize = 256 / 8;
-    const COLORS_AMOUNT: usize = MAX_COLOR.pow(3);
-
-    let (pallete_raw, pallete) = (0..COLORS_AMOUNT).map(|index|
+    let (pallete_raw, pallete) = if let Some(pallete_image) = pallete_image
     {
-        let r = (index / MAX_COLOR.pow(2)) * 8;
-        let g = ((index / MAX_COLOR) % MAX_COLOR) * 8;
-        let b = (index % MAX_COLOR) * 8;
-
-        let color = Color::new(r as u8, g as u8, b as u8);
-        (color, Lab::from(color))
-    }).unzip();
-
-    /*image.pixels_mut().enumerate().for_each(|(index, pixel)|
+        pallete_image.into_rgb8().pixels().map(|pixel|
+        {
+            let color = Color::new(pixel[0], pixel[1], pixel[2]);
+            (color, Lab::from(color))
+        }).unzip()
+    } else
     {
-        *pixel = pallete[index];
-    });*/
+        const MAX_COLOR: usize = 256 / 8;
+        const COLORS_AMOUNT: usize = MAX_COLOR.pow(3);
+
+        (0..COLORS_AMOUNT).map(|index|
+        {
+            let r = (index / MAX_COLOR.pow(2)) * 8;
+            let g = ((index / MAX_COLOR) % MAX_COLOR) * 8;
+            let b = (index % MAX_COLOR) * 8;
+
+            let color = Color::new(r as u8, g as u8, b as u8);
+            (color, Lab::from(color))
+        }).unzip()
+    };
+
     palletify(&mut image, pallete_raw, pallete);
 
     image.save("output.png").unwrap_or_else(|err|
