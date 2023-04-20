@@ -15,6 +15,101 @@ fn cry_about_it(text: &str) -> !
     process::exit(1)
 }
 
+struct Lab
+{
+    l: f32,
+    a: f32,
+    b: f32
+}
+
+impl Lab
+{
+    pub fn distance(&self, other: Lab) -> f32
+    {
+        let d_l = other.l - self.l;
+        let d_a = other.a - self.a;
+        let d_b = other.b - self.b;
+
+        d_l.powi(2) + d_a.powi(2) + d_b.powi(2)
+    }
+}
+
+impl From<Xyz> for Lab
+{
+    fn from(value: Xyz) -> Self
+    {
+        let e = 216.0 / 24389.0;
+        let k = 24389.0 / 27.0;
+
+        let convert = |value: f32| -> f32
+        {
+            if value > e
+            {
+                value.cbrt()
+            } else
+            {
+                (k * value + 16.0) / 116.0
+            }
+        };
+
+        let x = convert(value.x / 95.047);
+        let y = convert(value.y / 100.0);
+        let z = convert(value.z / 108.883);
+
+        let l = 116.0 * y - 16.0;
+        let a = 500.0 * (x - y);
+        let b = 200.0 * (y - z);
+
+        Self{l, a, b}
+    }
+}
+
+impl From<Color<u8>> for Lab
+{
+    fn from(value: Color<u8>) -> Self
+    {
+        Xyz::from(value).into()
+    }
+}
+
+struct Xyz
+{
+    x: f32,
+    y: f32,
+    z: f32
+}
+
+impl From<Color<u8>> for Xyz
+{
+    fn from(value: Color<u8>) -> Self
+    {
+        let linear = |value: u8| -> f32
+        {
+            let value = value as f32 / u8::MAX as f32;
+
+            let value = if value <= 0.04045
+            {
+                value / 12.92
+            } else
+            {
+                ((value + 0.055) / 1.055).powf(2.4)
+            };
+
+            value * 100.0
+        };
+
+        let r = linear(value.r);
+        let g = linear(value.g);
+        let b = linear(value.b);
+
+        let x = 0.4124564 * r + 0.3575761 * g + 0.1804375 * b;
+        let y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;
+        let z = 0.0193339 * r + 0.1191920 * g + 0.9503041 * b;
+
+        Self{x, y, z}
+    }
+}
+
 #[derive(Default, Clone, Copy)]
 struct Color<T>
 {
@@ -36,16 +131,6 @@ impl Color<u8>
     pub fn into_rgb8(self) -> Rgb<u8>
     {
         [self.r, self.g, self.b].into()
-    }
-}
-
-impl Color<f32>
-{
-    pub fn distance(&self, value: Color<f32>) -> f32
-    {
-        let diff = *self - value;
-
-        ((diff.r).powi(2) + (diff.g).powi(2) + (diff.b).powi(2)).sqrt()
     }
 }
 
@@ -175,15 +260,19 @@ impl<T: Mul<Output=T> + Copy> Mul<T> for Color<T>
     }
 }
 
-fn take_closest_color(pallete: &mut Vec<Color<u8>>, pixel: Color<u8>) -> Color<u8>
+fn take_closest_color(
+    pallete_raw: &mut Vec<Color<u8>>,
+    pallete: &mut Vec<Lab>,
+    pixel: Color<u8>
+) -> Color<u8>
 {
     let mut lowest_index = 0;
 
-    let mut lowest_distance = Color::<f32>::from(pallete[lowest_index]).distance(pixel.into());
+    let mut lowest_distance = pallete[lowest_index].distance(pixel.into());
 
     for (index, color) in pallete.iter().enumerate().skip(1)
     {
-        let distance = Color::<f32>::from(*color).distance(pixel.into());
+        let distance = color.distance(pixel.into());
 
         if distance < lowest_distance
         {
@@ -197,10 +286,11 @@ fn take_closest_color(pallete: &mut Vec<Color<u8>>, pixel: Color<u8>) -> Color<u
         }
     }
 
-    pallete.remove(lowest_index)
+    pallete.remove(lowest_index);
+    pallete_raw.remove(lowest_index)
 }
 
-fn palletify(image: &mut RgbImage, mut pallete: Vec<Color<u8>>)
+fn palletify(image: &mut RgbImage, mut pallete_raw: Vec<Color<u8>>, mut pallete: Vec<Lab>)
 {
     let total_size = image.width() * image.height();
 
@@ -237,7 +327,7 @@ fn palletify(image: &mut RgbImage, mut pallete: Vec<Color<u8>>)
             Color::<i32>::from(pixel) + errors[pixel_index]
         }.into();
 
-        let closest_color = take_closest_color(&mut pallete, color);
+        let closest_color = take_closest_color(&mut pallete_raw, &mut pallete, color);
 
         let neighbors_div = 12;
         let error: Color<f32> = (color - closest_color).into();
@@ -303,23 +393,60 @@ fn main()
     const MAX_COLOR: usize = 256 / 8;
     const COLORS_AMOUNT: usize = MAX_COLOR.pow(3);
 
-    let pallete = (0..COLORS_AMOUNT).map(|index|
+    let (pallete_raw, pallete) = (0..COLORS_AMOUNT).map(|index|
     {
         let r = (index / MAX_COLOR.pow(2)) * 8;
         let g = ((index / MAX_COLOR) % MAX_COLOR) * 8;
         let b = (index % MAX_COLOR) * 8;
 
-        Color::new(r as u8, g as u8, b as u8)
-    }).collect::<Vec<Color<u8>>>();
+        let color = Color::new(r as u8, g as u8, b as u8);
+        (color, color.into())
+    }).unzip();
 
     /*image.pixels_mut().enumerate().for_each(|(index, pixel)|
     {
         *pixel = pallete[index];
     });*/
-    palletify(&mut image, pallete);
+    palletify(&mut image, pallete_raw, pallete);
 
     image.save("output.png").unwrap_or_else(|err|
     {
         cry_about_it(&format!("problem saving the image {err:?}"))
     });
+}
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+    fn close_enough(value0: f32, value1: f32) -> bool
+    {
+        let epsilon = 0.01;
+
+        eprintln!("comparing {value0:.3} and {value1:.3}");
+        (value1 - value0).abs() < epsilon
+    }
+
+    #[test]
+    fn xyz()
+    {
+        let color = Color::new(17, 171, 109);
+        let xyz: Xyz = color.into();
+
+        assert!(close_enough(xyz.x, 17.55));
+        assert!(close_enough(xyz.y, 30.34));
+        assert!(close_enough(xyz.z, 19.40));
+    }
+
+    #[test]
+    fn lab()
+    {
+        let color = Color::new(17, 171, 109);
+        let lab: Lab = color.into();
+
+        assert!(close_enough(lab.l, 61.95));
+        assert!(close_enough(lab.a, -51.27));
+        assert!(close_enough(lab.b, 21.86));
+    }
 }
