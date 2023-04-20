@@ -15,6 +15,7 @@ fn cry_about_it(text: &str) -> !
     process::exit(1)
 }
 
+#[derive(Debug, Clone, Copy)]
 struct Lab
 {
     l: f32,
@@ -24,14 +25,31 @@ struct Lab
 
 impl Lab
 {
-    pub fn distance(&self, other: Lab) -> f32
+    pub fn distance_76(&self, other: Lab) -> f32
     {
         let d_l = other.l - self.l;
         let d_a = other.a - self.a;
         let d_b = other.b - self.b;
 
-        d_l.powi(2) + d_a.powi(2) + d_b.powi(2)
+        (d_l.powi(2) + d_a.powi(2) + d_b.powi(2)).sqrt()
     }
+
+    /*pub fn distance(&self, other: Lab) -> f32
+    {
+        let d_l = other.l - self.l;
+        let d_a = other.a - self.a;
+        let d_b = other.b - self.b;
+
+        let l_term = d_l / ;
+        let c_term = ;
+        let h_term = ;
+
+        let rotation_term = ;
+
+        let adjust = rotation_term * c_term * h_term;
+
+        (l_term.powi(2) + c_term.powi(2) + h_term.powi(2) + adjust).sqrt()
+    }*/
 }
 
 impl From<Xyz> for Lab
@@ -72,6 +90,7 @@ impl From<Color<u8>> for Lab
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 struct Xyz
 {
     x: f32,
@@ -268,11 +287,12 @@ fn take_closest_color(
 {
     let mut lowest_index = 0;
 
-    let mut lowest_distance = pallete[lowest_index].distance(pixel.into());
+    let pixel: Lab = pixel.into();
+    let mut lowest_distance = pallete[lowest_index].distance_76(pixel);
 
     for (index, color) in pallete.iter().enumerate().skip(1)
     {
-        let distance = color.distance(pixel.into());
+        let distance = color.distance_76(pixel);
 
         if distance < lowest_distance
         {
@@ -400,7 +420,7 @@ fn main()
         let b = (index % MAX_COLOR) * 8;
 
         let color = Color::new(r as u8, g as u8, b as u8);
-        (color, color.into())
+        (color, Lab::from(color))
     }).unzip();
 
     /*image.pixels_mut().enumerate().for_each(|(index, pixel)|
