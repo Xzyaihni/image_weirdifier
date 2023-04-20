@@ -1,5 +1,6 @@
 use std::{
     process,
+    f32::consts,
     ops::{Add, AddAssign, Sub, Div, Mul}
 };
 
@@ -25,6 +26,7 @@ struct Lab
 
 impl Lab
 {
+    #[allow(dead_code)]
     pub fn distance_76(&self, other: Lab) -> f32
     {
         let d_l = other.l - self.l;
@@ -34,22 +36,139 @@ impl Lab
         (d_l.powi(2) + d_a.powi(2) + d_b.powi(2)).sqrt()
     }
 
-    /*pub fn distance(&self, other: Lab) -> f32
+    pub fn distance(&self, other: Lab) -> f32
     {
         let d_l = other.l - self.l;
-        let d_a = other.a - self.a;
-        let d_b = other.b - self.b;
 
-        let l_term = d_l / ;
-        let c_term = ;
-        let h_term = ;
+        let c0 = (self.a.powi(2) + self.b.powi(2)).sqrt();
+        let c1 = (other.a.powi(2) + other.b.powi(2)).sqrt();
 
-        let rotation_term = ;
+        let k_l = 1.0;
+        let k_c = 1.0;
+        let k_h = 1.0;
+
+        let l_mean = (self.l + other.l) / 2.0;
+        let c_mean = (c0 + c1) / 2.0;
+
+        let g = 1.0 + 0.5 * (1.0 - (c_mean.powi(7) / (c_mean.powi(7) + 25.0_f32.powi(7))).sqrt());
+
+        let a0_strike = self.a * g;
+        let a1_strike = other.a * g;
+
+        let c0_strike = (a0_strike.powi(2) + self.b.powi(2)).sqrt();
+        let c1_strike = (a1_strike.powi(2) + other.b.powi(2)).sqrt();
+
+        let d_c = c1_strike - c0_strike;
+
+        let c_strike_mean = (c0_strike + c1_strike) / 2.0;
+
+        let checked_atan = |y: f32, x: f32|
+        {
+            if y == 0.0 && x == 0.0
+            {
+                0.0
+            } else
+            {
+                y.atan2(x)
+            }
+        };
+
+        let to_degrees = |value| value * 180.0 / consts::PI;
+        let to_radians = |value| value * (consts::PI / 180.0);
+
+        let positify = |radians: f32|
+        {
+            let degrees = to_degrees(radians);
+            if degrees < 0.0
+            {
+                degrees + 360.0
+            } else
+            {
+                degrees
+            }
+        };
+
+        let h0 = positify(checked_atan(self.b, a0_strike)) % 360.0;
+        let h1 = positify(checked_atan(other.b, a1_strike)) % 360.0;
+
+        let l_mean_shifted = (l_mean - 50.0).powi(2);
+
+        let temp_h_diff = (h0 - h1).abs();
+
+        let d_small_h = if c0_strike == 0.0 || c1_strike == 0.0
+        {
+            0.0
+        } else
+        {
+            if temp_h_diff <= 180.0
+            {
+                h1 - h0
+            } else if h1 <= h0
+            {
+                h1 - h0 + 360.0
+            } else
+            {
+                h1 - h0 - 360.0
+            }
+        };
+
+        let d_h = 2.0 * (c0_strike * c1_strike).sqrt() * (to_radians(d_small_h) / 2.0).sin();
+
+        let h_mean = to_radians(if c0_strike == 0.0 || c1_strike == 0.0
+        {
+            h0 + h1
+        } else
+        {
+            if temp_h_diff <= 180.0
+            {
+                (h0 + h1) / 2.0
+            } else if (h0 + h1) < 360.0
+            {
+                (h0 + h1 + 360.0) / 2.0
+            } else
+            {
+                (h0 + h1 - 360.0) / 2.0
+            }
+        });
+
+        let t = 1.0
+            - 0.17 * (h_mean - to_radians(30.0)).cos()
+            + 0.24 * (2.0 * h_mean).cos()
+            + 0.32 * (3.0 * h_mean + to_radians(6.0)).cos()
+            - 0.20 * (4.0 * h_mean - to_radians(63.0)).cos();
+
+        let l_scale = 1.0 + (0.015 * l_mean_shifted) / ((20.0 + l_mean_shifted).sqrt());
+        let c_scale = 1.0 + 0.045 * c_strike_mean;
+        let h_scale = 1.0 + 0.015 * c_strike_mean * t;
+
+        let l_term = d_l / (l_scale * k_l);
+        let c_term = d_c / (c_scale * k_c);
+        let h_term = d_h / (h_scale * k_h);
+
+        let r_adjust = (c_strike_mean.powi(7) / (c_strike_mean.powi(7) + 25.0_f32.powi(7))).sqrt();
+        let r_theta = (h_mean - to_radians(275.0)) / to_radians(25.0);
+
+        let rotation_term = -2.0 * r_adjust * (to_radians(60.0) * (-r_theta.powi(2)).exp()).sin();
+
+        /*dbg!(
+            self.l, self.a, self.b,
+            other.l, other.a, other.b,
+            temp_h_diff,
+            h0, h1,
+            l_scale, c_scale, h_scale,
+            h_mean, d_small_h,
+            t, rotation_term,
+            g - 1.0,
+            a0_strike, a1_strike,
+            c0_strike, c1_strike,
+            l_term, c_term, h_term,
+            d_l, d_c, d_h
+        );*/
 
         let adjust = rotation_term * c_term * h_term;
 
         (l_term.powi(2) + c_term.powi(2) + h_term.powi(2) + adjust).sqrt()
-    }*/
+    }
 }
 
 impl From<Xyz> for Lab
@@ -288,11 +407,11 @@ fn take_closest_color(
     let mut lowest_index = 0;
 
     let pixel: Lab = pixel.into();
-    let mut lowest_distance = pallete[lowest_index].distance_76(pixel);
+    let mut lowest_distance = pallete[lowest_index].distance(pixel);
 
     for (index, color) in pallete.iter().enumerate().skip(1)
     {
-        let distance = color.distance_76(pixel);
+        let distance = color.distance(pixel);
 
         if distance < lowest_distance
         {
@@ -468,5 +587,190 @@ mod tests
         assert!(close_enough(lab.l, 61.95));
         assert!(close_enough(lab.a, -51.27));
         assert!(close_enough(lab.b, 21.86));
+    }
+
+    #[test]
+    fn distance()
+    {
+        //auto generated by the cringe department
+        let tests = [
+            (
+                Lab{l: 50.0000, a: 2.6772, b: -79.7751},
+                Lab{l: 50.0000, a: 0.0000, b: -82.7485},
+                2.0425
+            ),
+            (
+                Lab{l: 50.0000, a: 3.1571, b: -77.2803},
+                Lab{l: 50.0000, a: 0.0000, b: -82.7485},
+                2.8615
+            ),
+            (
+                Lab{l: 50.0000, a: 2.8361, b: -74.0200},
+                Lab{l: 50.0000, a: 0.0000, b: -82.7485},
+                3.4412
+            ),
+            (
+                Lab{l: 50.0000, a: -1.3802, b: -84.2814},
+                Lab{l: 50.0000, a: 0.0000, b: -82.7485},
+                1.0000
+            ),
+            (
+                Lab{l: 50.0000, a: -1.1848, b: -84.8006},
+                Lab{l: 50.0000, a: 0.0000, b: -82.7485},
+                1.0000
+            ),
+            (
+                Lab{l: 50.0000, a: -0.9009, b: -85.5211},
+                Lab{l: 50.0000, a: 0.0000, b: -82.7485},
+                1.0000
+            ),
+            (
+                Lab{l: 50.0000, a: 0.0000, b: 0.0000},
+                Lab{l: 50.0000, a: -1.0000, b: 2.0000},
+                2.3669
+            ),
+            (
+                Lab{l: 50.0000, a: -1.0000, b: 2.0000},
+                Lab{l: 50.0000, a: 0.0000, b: 0.0000},
+                2.3669
+            ),
+            (
+                Lab{l: 50.0000, a: 2.4900, b: -0.0010},
+                Lab{l: 50.0000, a: -2.4900, b: 0.0009},
+                7.1792
+            ),
+            (
+                Lab{l: 50.0000, a: 2.4900, b: -0.0010},
+                Lab{l: 50.0000, a: -2.4900, b: 0.0010},
+                7.1792
+            ),
+            (
+                Lab{l: 50.0000, a: 2.4900, b: -0.0010},
+                Lab{l: 50.0000, a: -2.4900, b: 0.0011},
+                7.2195
+            ),
+            (
+                Lab{l: 50.0000, a: 2.4900, b: -0.0010},
+                Lab{l: 50.0000, a: -2.4900, b: 0.0012},
+                7.2195
+            ),
+            (
+                Lab{l: 50.0000, a: -0.0010, b: 2.4900},
+                Lab{l: 50.0000, a: 0.0009, b: -2.4900},
+                4.8045
+            ),
+            (
+                Lab{l: 50.0000, a: -0.0010, b: 2.4900},
+                Lab{l: 50.0000, a: 0.0010, b: -2.4900},
+                4.8045
+            ),
+            (
+                Lab{l: 50.0000, a: -0.0010, b: 2.4900},
+                Lab{l: 50.0000, a: 0.0011, b: -2.4900},
+                4.7461
+            ),
+            (
+                Lab{l: 50.0000, a: 2.5000, b: 0.0000},
+                Lab{l: 50.0000, a: 0.0000, b: -2.5000},
+                4.3065
+            ),
+            (
+                Lab{l: 50.0000, a: 2.5000, b: 0.0000},
+                Lab{l: 73.0000, a: 25.0000, b: -18.0000},
+                27.1492
+            ),
+            (
+                Lab{l: 50.0000, a: 2.5000, b: 0.0000},
+                Lab{l: 61.0000, a: -5.0000, b: 29.0000},
+                22.8977
+            ),
+            (
+                Lab{l: 50.0000, a: 2.5000, b: 0.0000},
+                Lab{l: 56.0000, a: -27.0000, b: -3.0000},
+                31.9030
+            ),
+            (
+                Lab{l: 50.0000, a: 2.5000, b: 0.0000},
+                Lab{l: 58.0000, a: 24.0000, b: 15.0000},
+                19.4535
+            ),
+            (
+                Lab{l: 50.0000, a: 2.5000, b: 0.0000},
+                Lab{l: 50.0000, a: 3.1736, b: 0.5854},
+                1.0000
+            ),
+            (
+                Lab{l: 50.0000, a: 2.5000, b: 0.0000},
+                Lab{l: 50.0000, a: 3.2972, b: 0.0000},
+                1.0000
+            ),
+            (
+                Lab{l: 50.0000, a: 2.5000, b: 0.0000},
+                Lab{l: 50.0000, a: 1.8634, b: 0.5757},
+                1.0000
+            ),
+            (
+                Lab{l: 50.0000, a: 2.5000, b: 0.0000},
+                Lab{l: 50.0000, a: 3.2592, b: 0.3350},
+                1.0000
+            ),
+            (
+                Lab{l: 60.2574, a: -34.0099, b: 36.2677},
+                Lab{l: 60.4626, a: -34.1751, b: 39.4387},
+                1.2644
+            ),
+            (
+                Lab{l: 63.0109, a: -31.0961, b: -5.8663},
+                Lab{l: 62.8187, a: -29.7946, b: -4.0864},
+                1.2630
+            ),
+            (
+                Lab{l: 61.2901, a: 3.7196, b: -5.3901},
+                Lab{l: 61.4292, a: 2.2480, b: -4.9620},
+                1.8731
+            ),
+            (
+                Lab{l: 35.0831, a: -44.1164, b: 3.7933},
+                Lab{l: 35.0232, a: -40.0716, b: 1.5901},
+                1.8645
+            ),
+            (
+                Lab{l: 22.7233, a: 20.0904, b: -46.6940},
+                Lab{l: 23.0331, a: 14.9730, b: -42.5619},
+                2.0373
+            ),
+            (
+                Lab{l: 36.4612, a: 47.8580, b: 18.3852},
+                Lab{l: 36.2715, a: 50.5065, b: 21.2231},
+                1.4146
+            ),
+            (
+                Lab{l: 90.8027, a: -2.0831, b: 1.4410},
+                Lab{l: 91.1528, a: -1.6435, b: 0.0447},
+                1.4441
+            ),
+            (
+                Lab{l: 90.9257, a: -0.5406, b: -0.9208},
+                Lab{l: 88.6381, a: -0.8985, b: -0.7239},
+                1.5381
+            ),
+            (
+                Lab{l: 6.7747, a: -0.2908, b: -2.4247},
+                Lab{l: 5.8714, a: -0.0985, b: -2.2286},
+                0.6377
+            ),
+            (
+                Lab{l: 2.0776, a: 0.0795, b: -1.1350},
+                Lab{l: 0.9033, a: -0.0636, b: -0.5514},
+                0.9082
+            ),
+        ];
+
+        for test in tests
+        {
+            let distance = test.0.distance(test.1);
+
+            assert!(close_enough(distance, test.2));
+        }
     }
 }
