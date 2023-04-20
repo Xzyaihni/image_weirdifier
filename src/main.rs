@@ -537,7 +537,7 @@ fn main()
 
         if let Some(max_size) = max_size
         {
-            image = image.resize_exact(max_size, max_size, FilterType::Lanczos3);
+            image = image.resize(max_size, max_size, FilterType::Lanczos3);
         }
 
         image
