@@ -1,6 +1,5 @@
 use std::{
     process,
-    f32::consts,
     ops::{Add, AddAssign, Sub, Div, Mul}
 };
 
@@ -33,7 +32,7 @@ impl Lab
         let d_a = other.a - self.a;
         let d_b = other.b - self.b;
 
-        (d_l.powi(2) + d_a.powi(2) + d_b.powi(2)).sqrt()
+        d_l.powi(2) + d_a.powi(2) + d_b.powi(2)
     }
 
     pub fn distance(&self, other: Lab) -> f32
@@ -73,12 +72,9 @@ impl Lab
             }
         };
 
-        let to_degrees = |value| value * 180.0 / consts::PI;
-        let to_radians = |value| value * (consts::PI / 180.0);
-
         let positify = |radians: f32|
         {
-            let degrees = to_degrees(radians);
+            let degrees = radians.to_degrees();
             if degrees < 0.0
             {
                 degrees + 360.0
@@ -112,9 +108,9 @@ impl Lab
             }
         };
 
-        let d_h = 2.0 * (c0_strike * c1_strike).sqrt() * (to_radians(d_small_h) / 2.0).sin();
+        let d_h = 2.0 * (c0_strike * c1_strike).sqrt() * (d_small_h.to_radians() / 2.0).sin();
 
-        let h_mean = to_radians(if c0_strike == 0.0 || c1_strike == 0.0
+        let h_mean = if c0_strike == 0.0 || c1_strike == 0.0
         {
             h0 + h1
         } else
@@ -129,13 +125,13 @@ impl Lab
             {
                 (h0 + h1 - 360.0) / 2.0
             }
-        });
+        }.to_radians();
 
         let t = 1.0
-            - 0.17 * (h_mean - to_radians(30.0)).cos()
+            - 0.17 * (h_mean - 30.0_f32.to_radians()).cos()
             + 0.24 * (2.0 * h_mean).cos()
-            + 0.32 * (3.0 * h_mean + to_radians(6.0)).cos()
-            - 0.20 * (4.0 * h_mean - to_radians(63.0)).cos();
+            + 0.32 * (3.0 * h_mean + 6.0_f32.to_radians()).cos()
+            - 0.20 * (4.0 * h_mean - 63.0_f32.to_radians()).cos();
 
         let l_scale = 1.0 + (0.015 * l_mean_shifted) / ((20.0 + l_mean_shifted).sqrt());
         let c_scale = 1.0 + 0.045 * c_strike_mean;
@@ -146,9 +142,10 @@ impl Lab
         let h_term = d_h / (h_scale * k_h);
 
         let r_adjust = (c_strike_mean.powi(7) / (c_strike_mean.powi(7) + 25.0_f32.powi(7))).sqrt();
-        let r_theta = (h_mean - to_radians(275.0)) / to_radians(25.0);
+        let r_theta = (h_mean - 275.0_f32.to_radians()) / 25.0_f32.to_radians();
 
-        let rotation_term = -2.0 * r_adjust * (to_radians(60.0) * (-r_theta.powi(2)).exp()).sin();
+        let rotation_term = -2.0 * r_adjust
+            * (60.0_f32.to_radians() * (-r_theta.powi(2)).exp()).sin();
 
         /*dbg!(
             self.l, self.a, self.b,
