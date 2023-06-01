@@ -395,11 +395,47 @@ impl<T: Mul<Output=T> + Copy> Mul<T> for Color<T>
     }
 }
 
+struct State
+{
+    removed_colors: usize,
+    total_colors: usize,
+    fast_dist: bool,
+    progress_track: bool
+}
+
+impl State
+{
+    pub fn new(total_colors: usize, fast_dist: bool, progress_track: bool) -> Self
+    {
+        Self{removed_colors: 0, total_colors, fast_dist, progress_track}
+    }
+
+    pub fn remove_color(&mut self)
+    {
+        const NOTIFY_TIMES: usize = 150;
+
+        self.removed_colors += 1;
+
+        if self.progress_track
+        {
+            let notify_amount = self.total_colors / NOTIFY_TIMES;
+
+            if (self.removed_colors % notify_amount) == 0
+            {
+                let percentage =
+                    (self.removed_colors / notify_amount) as f32 / NOTIFY_TIMES as f32;
+
+                eprintln!("[progress] {:.1}%", percentage * 100.0);
+            }
+        }
+    }
+}
+
 fn take_closest_color(
     pallete_raw: &mut Vec<Color<u8>>,
     pallete: &mut Vec<Lab>,
     pixel: Color<u8>,
-    fast_dist: bool
+    state: &mut State
 ) -> Color<u8>
 {
     let mut lowest_index = 0;
@@ -408,7 +444,7 @@ fn take_closest_color(
 
     let calc_distance = |color: Lab, other: Lab| -> f32
     {
-        if fast_dist
+        if state.fast_dist
         {
             color.distance_76(other)
         } else
@@ -436,6 +472,8 @@ fn take_closest_color(
     }
 
     pallete.remove(lowest_index);
+    state.remove_color();
+
     pallete_raw.remove(lowest_index)
 }
 
@@ -443,7 +481,7 @@ fn palletify(
     image: &mut RgbImage,
     mut pallete_raw: Vec<Color<u8>>,
     mut pallete: Vec<Lab>,
-    fast_dist: bool
+    mut state: State
 )
 {
     let total_size = image.width() * image.height();
@@ -481,7 +519,7 @@ fn palletify(
             Color::<i32>::from(pixel) + errors[pixel_index]
         }.into();
 
-        let closest_color = take_closest_color(&mut pallete_raw, &mut pallete, color, fast_dist);
+        let closest_color = take_closest_color(&mut pallete_raw, &mut pallete, color, &mut state);
 
         let neighbors_div = 12;
         let error: Color<f32> = (color - closest_color).into();
@@ -517,6 +555,7 @@ fn palletify(
 fn main()
 {
     let mut fast_dist = false;
+    let mut progress_track = false;
 
     let mut max_size: Option<u32> = None;
     let mut pallete_path: Option<String> = None;
@@ -530,6 +569,9 @@ fn main()
             .add_option(&["-f", "--fast-dist"], StoreTrue,
                 "use faster but less accurate distance function"
             );
+
+        parser.refer(&mut progress_track)
+            .add_option(&["--progress"], StoreTrue, "show progress");
 
         parser.refer(&mut max_size)
             .add_option(&["-s", "--size"], StoreOption, "max pallete image size");
@@ -591,7 +633,7 @@ fn main()
 
     let mut image = image.resize_exact(new_width, new_height, FilterType::Lanczos3).into_rgb8();
 
-    let (pallete_raw, pallete) = if let Some(pallete_image) = pallete_image
+    let (pallete_raw, pallete): (Vec<_>, _) = if let Some(pallete_image) = pallete_image
     {
         pallete_image.into_rgb8().pixels().map(|pixel|
         {
@@ -614,7 +656,9 @@ fn main()
         }).unzip()
     };
 
-    palletify(&mut image, pallete_raw, pallete, fast_dist);
+    let state = State::new(pallete_raw.len(), fast_dist, progress_track);
+
+    palletify(&mut image, pallete_raw, pallete, state);
 
     image.save("output.png").unwrap_or_else(|err|
     {
